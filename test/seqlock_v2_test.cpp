@@ -1,30 +1,35 @@
 #include <gtest/gtest.h>
 #include <thread>
 #include <atomic>
-
-#include "seqlock.hpp"
+#include "seqlock_versions/seqlock_v2.hpp"
 #include "util/helper_data_types.hpp"
 
 namespace lockfree
 {
 
-// Test basic functionality of SPSeqLock
+// Test basic functionality of SPSeqLockV2
 TEST(SeqLockTest, BasicFunctionality)
 {
-    SPSeqLock<int> seqlock;
+    SPSeqLockV2<> seqlock;
 
     // Test store and load
-    seqlock.store(42);
-    EXPECT_EQ(seqlock.load(), 42);
+    Data data1 = {42, 42};
+    seqlock.store(data1);
+    Data loaded_data1 = seqlock.load();
+    EXPECT_EQ(loaded_data1.data1, 42);
+    EXPECT_EQ(loaded_data1.data2, 42);
 
-    seqlock.store(100);
-    EXPECT_EQ(seqlock.load(), 100);
+    Data data2 = {100, 100};
+    seqlock.store(data2);
+    Data loaded_data2 = seqlock.load();
+    EXPECT_EQ(loaded_data2.data1, 100);
+    EXPECT_EQ(loaded_data2.data2, 100);
 }
 
 // Test correctness in concurrent scenarios
 TEST(SeqLockTest, ConcurrencyTest)
 {
-    SPSeqLock<Data> seqlock;
+    SPSeqLockV2<> seqlock;
     std::atomic<size_t> ready(0);
     constexpr int kIterations = 10000;
     size_t counter = 0;
@@ -65,43 +70,9 @@ TEST(SeqLockTest, ConcurrencyTest)
     read_thread.join();
 }
 
-// Test SPSeqLock's support for non-trivial types
-TEST(SeqLockTest, NonTrivialTypeTest)
-{
-    struct NonTrivial
-    {
-        int a;
-        double b;
-        NonTrivial() : a(0), b(0.0) {}
-        NonTrivial(int a, double b) : a(a), b(b) {}
-        bool operator==(const NonTrivial &other) const
-        {
-            return a == other.a && b == other.b;
-        }
-    };
-
-    SPSeqLock<NonTrivial> seqlock;
-
-    // Test initial value
-    EXPECT_EQ(seqlock.load(), NonTrivial{});
-
-    // Test store and load
-    NonTrivial value1{42, 3.14};
-    seqlock.store(value1);
-    EXPECT_EQ(seqlock.load(), value1);
-
-    NonTrivial value2{100, 2.71};
-    seqlock.store(value2);
-    EXPECT_EQ(seqlock.load(), value2);
-}
-
-// Fuzz test for SPSeqLock
+// Fuzz test for SPSeqLockV2
 TEST(SeqLockFuzzTest, ConcurrentReadWrite) {
-    struct Data {
-        size_t a, b, c;
-    };
-
-    SPSeqLock<Data> sl;
+    SPSeqLockV2<> sl;
     std::atomic<size_t> ready(0);
     std::vector<std::thread> threads;
 
@@ -117,8 +88,7 @@ TEST(SeqLockFuzzTest, ConcurrentReadWrite) {
             for (int j = 0; j < kIterations; ++j) {
                 auto copy = sl.load();
                 // Ensure the data is consistent
-                EXPECT_EQ(copy.a + 100, copy.b);
-                EXPECT_EQ(copy.c, copy.a + copy.b);
+                EXPECT_EQ(copy.data1, copy.data2); // Ensure data1 and data2 are equal
             }
             ready--;
         });
@@ -127,7 +97,7 @@ TEST(SeqLockFuzzTest, ConcurrentReadWrite) {
     // Writer thread
     size_t counter = 0;
     while (true) {
-        Data data = {counter, counter + 100, counter + (counter + 100)};
+        Data data = {static_cast<int>(counter), static_cast<int>(counter)}; // data1 = data2 = counter
         sl.store(data);
         counter++;
 

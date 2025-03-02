@@ -3,7 +3,7 @@
 #include <concepts>
 #include <type_traits>
 
-namespace lock
+namespace lockfree
 {
 
 template <typename T>

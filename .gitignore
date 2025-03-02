@@ -3,3 +3,6 @@ build/
 
 # ignore logs
 **/*.log
+
+# ignore vscode files
+.vscode/

@@ -1,3 +1,7 @@
+/*
+Copyright (c) 2018 Erik Rigtorp <erik@rigtorp.se>
+*/
+
 #pragma once
 
 #include <concepts>
@@ -6,10 +10,10 @@
 #include <array>
 #include "util/helper_traits.hpp"
 
-namespace lock
+namespace lockfree
 {
 
-template <CopyableT T, int Cacheline_Size = 128> 
+template <CopyableT T, int Cacheline_Size = 64> 
 class SPSeqLock
 {
 public:
@@ -25,7 +29,7 @@ public:
             std::atomic_signal_fence(std::memory_order_acq_rel);
             ret = value_;
             std::atomic_signal_fence(std::memory_order_acq_rel);
-            seq1 = seq_.load(std::memory_order_relaxed); // TODO:
+            seq1 = seq_.load(std::memory_order_acquire);
         } while ((seq0 != seq1) || (seq0 & 1));
         return ret;
     }
@@ -34,6 +38,7 @@ public:
     {
         size_t seq0 = seq_.load(std::memory_order_relaxed);
         seq_.store(seq0 + 1, std::memory_order_release);
+        std::atomic_signal_fence(std::memory_order_acq_rel);
         value_ = input;
         std::atomic_signal_fence(std::memory_order_acq_rel);
         seq_.store(seq0 + 2, std::memory_order_release);
@@ -45,7 +50,7 @@ private:
     std::array<uint8_t, Cacheline_Size - (sizeof(value_) + sizeof(seq_)) % Cacheline_Size> padding_;
 };
 
-template <CopyableT T, int Cacheline_Size = 128> 
+template <CopyableT T, int Cacheline_Size = 64> 
 class MPSeqLock
 {
 public:
@@ -61,7 +66,7 @@ public:
             std::atomic_signal_fence(std::memory_order_acq_rel);
             ret = value_;
             std::atomic_signal_fence(std::memory_order_acq_rel);
-            seq1 = seq_.load(std::memory_order_relaxed); // TODO:
+            seq1 = seq_.load(std::memory_order_relaxed);
         } while ((seq0 != seq1) || (seq0 & 1));
         return ret;
     }
@@ -69,9 +74,10 @@ public:
     __attribute__((noinline)) void store(const T & input) noexcept
     {
         size_t seq0 = seq_.load(std::memory_order_relaxed);
-        seq_.store(seq0 + 1, std::memory_order_release);
         while((seq0 & 1) || (!seq_.compare_exchange_weak(seq0, seq0 + 1))) {}
+        std::atomic_signal_fence(std::memory_order_acq_rel);
         value_ = input;
+        std::atomic_signal_fence(std::memory_order_acq_rel);
         seq_.store(seq0 + 2, std::memory_order_release);
     }
 
@@ -79,7 +85,6 @@ private:
     alignas(Cacheline_Size) T value_;
     std::atomic<size_t> seq_;
     std::array<uint8_t, Cacheline_Size - (sizeof(value_) + sizeof(seq_)) % Cacheline_Size> padding_;
-
 };
 
 }

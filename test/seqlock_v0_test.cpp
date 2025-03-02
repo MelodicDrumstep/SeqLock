@@ -1,16 +1,16 @@
 #include <gtest/gtest.h>
 #include <thread>
 #include <atomic>
-#include "seqlock_versions/seqlock_v0_wrong.hpp"
+#include "seqlock_versions/seqlock_v0.hpp"
 #include "util/helper_data_types.hpp"
 
-namespace lock
+namespace lockfree
 {
 
-// Test basic functionality of SPMCSeqLockV0
+// Test basic functionality of SPSeqLockV0
 TEST(SeqLockTest, BasicFunctionality)
 {
-    SPMCSeqLockV0<> seqlock;
+    SPSeqLockV0<> seqlock;
 
     // Test store and load
     Data data1 = {42, 42};
@@ -29,20 +29,31 @@ TEST(SeqLockTest, BasicFunctionality)
 // Test correctness in concurrent scenarios
 TEST(SeqLockTest, ConcurrencyTest)
 {
-    SPMCSeqLockV0<> seqlock;
+    SPSeqLockV0<> seqlock;
+    std::atomic<size_t> ready(0);
     constexpr int kIterations = 10000;
+    size_t counter = 0;
 
     // Writer thread
-    auto writer = [&seqlock]() {
+    auto writer = [&seqlock, &ready, &counter]() {
         for (int i = 0; i < kIterations; ++i) {
             Data data = {i, i};
             seqlock.store(data);
         }
+        counter++;
+
+        if (counter == 1) {
+            // Signal reader threads to start
+            ready += 1;
+        }
     };
 
     // Reader thread
-    auto reader = [&seqlock, kIterations]() {
+    auto reader = [&seqlock, &ready, kIterations]() {
         for (int i = 0; i < kIterations; ++i) {
+            while (ready == 0) {
+                // Wait for the writer thread to start
+            }
             Data value = seqlock.load();
             // Ensure the read value is valid (between 0 and kIterations-1)
             EXPECT_GE(value.data1, 0);
@@ -59,9 +70,9 @@ TEST(SeqLockTest, ConcurrencyTest)
     read_thread.join();
 }
 
-// Fuzz test for SPMCSeqLockV0
+// Fuzz test for SPSeqLockV0
 TEST(SeqLockFuzzTest, ConcurrentReadWrite) {
-    SPMCSeqLockV0<> sl;
+    SPSeqLockV0<> sl;
     std::atomic<size_t> ready(0);
     std::vector<std::thread> threads;
 
@@ -109,4 +120,4 @@ TEST(SeqLockFuzzTest, ConcurrentReadWrite) {
     std::cout << "Fuzz test completed with counter = " << counter << std::endl;
 }
 
-} // namespace lock
+} // namespace lockfree
